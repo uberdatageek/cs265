@@ -1,0 +1,2 @@
+cd /Users/eaofxr/desktop/c/daslab/generator
+./generator --puts 100000 --gets 1000 --ranges 10 --deletes 20 --gets-misses-ratio 0.3 --gets-skewness 0.2 > workload.txt

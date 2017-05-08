@@ -1,0 +1,17 @@
+cd /Users/eaofxr/desktop/c/daslab/generator
+RED='\033[0;31m'
+NC='\033[0m'
+echo -e "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"
+echo -e "||Multiple Runs (THREADED LSM_TREE) for ${RED}cs265${NC} Big Data Systems||"
+echo -e "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"
+./generator --puts 100000 --gets 1000 --ranges 10 --deletes 20 --gets-misses-ratio 0.3 --gets-skewness 0.2 > workload.txt
+./threaded_lsm < workload.txt
+
+./generator --puts 100000 --ranges 100 --gaussian-ranges > workload.txt
+./threaded_lsm < workload.txt
+
+./generator --puts 100000 --ranges 100 --uniform-ranges > workload.txt
+./threaded_lsm < workload.txt
+echo -e "|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"
+echo -e "||            ${RED}                    -END of RUN-                             ${NC}||"
+echo -e "|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"

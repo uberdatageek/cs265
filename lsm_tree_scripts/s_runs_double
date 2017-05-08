@@ -1,0 +1,19 @@
+cd /Users/eaofxr/desktop/c/daslab/generator
+RED='\033[0;31m'
+NC='\033[0m'
+echo -e "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"
+echo -e "||Multiple Runs (SERIAL LSM_TREE) for ${RED}cs265${NC} Big Data Systems||"
+echo -e "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"
+./generator --puts 100000 --gets 1000 --ranges 10 --deletes 20 --gets-misses-ratio 0.3 --gets-skewness 0.2 > workload.txt
+./lsm2 < workload.txt
+./generator --puts 200000 --gets 2000 --ranges 20 --deletes 40 --gets-misses-ratio 0.3 --gets-skewness 0.2 > workload.txt
+./lsm2 < workload.txt
+./generator --puts 400000 --gets 4000 --ranges 40 --deletes 40 --gets-misses-ratio 0.3 --gets-skewness 0.2 > workload.txt
+./lsm2 < workload.txt
+./generator --puts 800000 --gets 8000 --ranges 80 --deletes 80 --gets-misses-ratio 0.3 --gets-skewness 0.2 > workload.txt
+./lsm2 < workload.txt
+./generator --puts 1600000 --gets 16000 --ranges 160 --deletes 160 --gets-misses-ratio 0.3 --gets-skewness 0.2 > workload.txt
+./lsm2 < workload.txt
+echo -e "|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"
+echo -e "||            ${RED}                    -END of RUN-                             ${NC}||"
+echo -e "|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"

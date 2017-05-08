@@ -1,0 +1,1 @@
+./generator --puts 100000 --ranges 100 --gaussian-ranges > workload.txt

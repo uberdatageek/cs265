@@ -20,10 +20,12 @@ typedef int bool;
 #define MAXC 256
 
 #define array_size 100000
-#define threshold 50000
-#define factor 6
+
+#define threshold 20000
+#define factor 2
 #define FPR 0
 #define maintain_dir 0 //change to 0 (default setting) to wipe out all directories and files before next dataset is loaded
+
 
 //time for put queries
 clock_t p_start, p_end;
@@ -53,7 +55,6 @@ int l_test = 0;
 int theFirst, theSecond, originalA, originalB;
 ///////////////////////////////
 
-
 typedef struct {
     int run_merge;
     int run0;
@@ -64,6 +65,7 @@ typedef struct {
     int level_merge[7];
     int bloom_hit[6];
     int bloom_miss[6];
+    int range_count;
 } lsm_meta;
 
 typedef struct  {
@@ -71,6 +73,10 @@ typedef struct  {
     int values;
     int delete_me;
 } lsm;
+
+typedef struct {
+    int the_key;
+} range_store;
 
 off_t fsize(const char *filename) {
     struct stat st;
@@ -146,7 +152,7 @@ void merge_arrays(lsm *ptr2, lsm *ptr3, int destTree,lsm_meta *lm, bloom_t curre
 
     /*printf("ARRAY1 SIZE: %d\n",fsize(dest1_base));
     printf("ARRAY2 SIZE: %d\n",fsize(dest2_base));*/
-    printf("TOTAL ARRAY SIZE %d\n",total_array_size);
+    ///////////////////////////////////////////////////////////////////////////printf("TOTAL ARRAY SIZE %d\n",total_array_size);
 
     //since level counts start at zero 2 => level c1, 3 => level c2 etc.
     //checking for next level
@@ -165,7 +171,7 @@ void merge_arrays(lsm *ptr2, lsm *ptr3, int destTree,lsm_meta *lm, bloom_t curre
     }
     level_threshold = x * threshold;
 
-    printf("LEVEL THRESHOLD: (level)%d (size)%d\n",destTree,level_threshold);
+    ////////////////////////////////////////////////////////////////////printf("LEVEL THRESHOLD: (level)%d (size)%d\n",destTree,level_threshold);
 
     int move_to = 0;
 
@@ -425,6 +431,9 @@ void lsm_flush(lsm *ptr, lsm *run, lsm *lsm_purge,lsm_meta *lm, bloom_t bloom1){
         lm[0].level_merge[0] = 1;
         ///////////////////////////////////////
 
+        
+
+
         //purge deleted elements/////////////////////////
         for(z=0; z<lm[0].count_B[0]; z++) {
 
@@ -438,7 +447,12 @@ void lsm_flush(lsm *ptr, lsm *run, lsm *lsm_purge,lsm_meta *lm, bloom_t bloom1){
             }
 
         }
+
         /////////////////////////////////////////////////
+
+        //sort new purged array
+        qsort(lsm_purge, purge_count, sizeof(*lsm_purge), cmp);
+
 
         if(lm[0].level[1] == 1){
             move_to = 2;
@@ -460,8 +474,7 @@ void lsm_flush(lsm *ptr, lsm *run, lsm *lsm_purge,lsm_meta *lm, bloom_t bloom1){
             lm[0].count_B[1] = purge_count;
         }        
 
-        //sort new purged array
-        qsort(lsm_purge, purge_count, sizeof(*lsm_purge), cmp);
+
 
         if (fwrite(lsm_purge, sizeof(lsm), purge_count, lsm_tree) != purge_count) //counter is the count of the lsm tree being flushed (run_count, which equals to c0_count at the point of flushing)
         {
@@ -542,6 +555,29 @@ int fence_pointer(lsm *ptr,lsm_meta *lm, int key, int level,int t_array){
 
     return results;
 }
+
+
+/*void binarysearch(int key, lsm *ptr, int m, int n){ //m => min , n => max
+    int flag=0;
+    int middle=(m+n)/2;
+    if(n == m && key != ptr[middle].keys)
+    {
+        printf("%d is not in the array", key);
+        return;
+    }
+    else        
+    if(ptr[middle].keys==key)
+    {
+        printf("%d has been found at postion %d!\n", key, middle+1);
+        flag=1;
+    }
+    else
+    if(key > ptr[middle].keys)
+        binarysearch(key, ptr, middle, n);
+    else
+    if(key < ptr[middle].keys)
+        binarysearch(key, ptr, m, middle);
+}*/
 
 
 //Weak hashing function
@@ -767,6 +803,8 @@ int lsm_lookup (lsm *ptr,lsm *run,lsm *ptr1,lsm *ptr2, lsm_meta *lm, bloom_t blo
     }
 
 
+
+
     if(x == 0){
         
         for(i=1; i<lm[0].level_count; i++) {
@@ -921,17 +959,49 @@ int lsm_range (lsm *ptr,lsm *run,lsm *ptr1,lsm *ptr2,lsm_meta *lm, bloom_t bloom
     int y;
     int searchKey;
     int theVal;
+    int bloom_it = 6;
 
+    qsort(ptr, lm[0].count_A[0], sizeof(*ptr), cmp);
+
+
+    //for (y=minkey; y<=maxkey; y++) {
     for (y=minkey; y<=maxkey; y++) {
-        searchKey = y;
-        theVal = lsm_lookup(ptr,run,ptr1,ptr2,lm,bloom1,bloom2,bloom3,bloom4,bloom5,bloom6,searchKey); 
-        return theVal; 
-    } 
 
+        searchKey = y;
+
+        theVal = lsm_lookup(ptr,run,ptr1,ptr2,lm,bloom1,bloom2,bloom3,bloom4,bloom5,bloom6,searchKey); 
+
+        if(theVal != 0){
+            printf("GOT EM! XXXXXXXXXXXXXXXXXXXXXXXXX\n");
+            printf("THE VALUE IS: %d\n",theVal);
+        }
+        
+    }
+
+    return NULL; 
 }
 
 
+/*void printRepeating(lsm *ptr, int size, int min, int max)
+{
+  int i, j;
+  //printf("THE MIN IS: %d\n",min);
+  //printf("THE MAX IS: %d\n",max);
 
+  for(i = 0; i < size; i++){
+    for(j = i+1; j < size; j++) {
+          //printf("THE i IS: %d\n",ptr[i].keys);
+          //printf("THE j IS: %d\n",ptr[j].keys);        
+      if(ptr[i].keys == ptr[j].keys) {
+        printf("THE KEY IS.... %d \n", ptr[i].keys);
+      }
+        
+    }
+
+
+  }
+
+}*/ 
 
 
 int main(int argc, char **argv) 
@@ -948,7 +1018,7 @@ int main(int argc, char **argv)
     c0=malloc(array_size*sizeof(lsm));
 
     lsm_meta *lm;
-    lm=malloc(10*sizeof(lsm_meta));
+    lm=malloc(11*sizeof(lsm_meta));
 
     lsm *run; //passed to function for saving flushed data from level0 to level 1
     run=malloc(array_size*sizeof(lsm));
@@ -967,6 +1037,7 @@ int main(int argc, char **argv)
 
     lsm *ptr2; //for files
     ptr2=malloc(5*array_size*sizeof(lsm)); 
+
 
     bloom_t bloom1 = bloom_create(array_size);
     bloom_add_hash(bloom1, hash_func);
@@ -994,6 +1065,8 @@ int main(int argc, char **argv)
         //Set value to one to account for the creation of level c0
         lm[0].level_count = 1;
     }
+
+
 
 
     //create necessary directory (lsm_tree)
@@ -1065,7 +1138,7 @@ int main(int argc, char **argv)
                                 case 1:
                                     
                                     if(lm[0].level[y] == 2){
-                                        printf("ENTERING LEVEL 1\n");
+                                        //printf("ENTERING LEVEL 1\n");
                                         lm[0].level_merge[y] = 1;
                                         merge_arrays(array1,array2,y,lm,bloom1,bloom2);
                                         lm[0].level_merge[y] = 0;
@@ -1074,7 +1147,7 @@ int main(int argc, char **argv)
                                 case 2:
                                     
                                     if(lm[0].level[y] == 2){
-                                        printf("ENTERING LEVEL 2\n");
+                                        //printf("ENTERING LEVEL 2\n");
                                         lm[0].level_merge[y] = 1;
                                         merge_arrays(array1,array2,y,lm,bloom2,bloom3);
                                         lm[0].level_merge[y] = 0;
@@ -1083,7 +1156,7 @@ int main(int argc, char **argv)
                                 case 3:
                                     
                                     if(lm[0].level[y] == 2){
-                                        printf("ENTERING LEVEL 3\n");
+                                        //printf("ENTERING LEVEL 3\n");
                                         lm[0].level_merge[y] = 1;
                                         merge_arrays(array1,array2,y,lm,bloom3,bloom4);
                                         lm[0].level_merge[y] = 0;
@@ -1092,7 +1165,7 @@ int main(int argc, char **argv)
                                 case 4: 
                                     
                                     if(lm[0].level[y] == 2){
-                                        printf("ENTERING LEVEL 4\n");
+                                        //printf("ENTERING LEVEL 4\n");
                                         lm[0].level_merge[y] = 1;
                                         merge_arrays(array1,array2,y,lm,bloom4,bloom5);
                                         lm[0].level_merge[y] = 0;
@@ -1101,7 +1174,7 @@ int main(int argc, char **argv)
                                 case 5:
                                     
                                     if(lm[0].level[y] == 2){
-                                        printf("ENTERING LEVEL 5\n");
+                                        //printf("ENTERING LEVEL 5\n");
                                         lm[0].level_merge[y] = 1;
                                         merge_arrays(array1,array2,y,lm,bloom5,bloom6);
                                         lm[0].level_merge[y] = 0;
@@ -1110,7 +1183,7 @@ int main(int argc, char **argv)
                                 case 6:
                                     
                                     if(lm[0].level[y] == 2){
-                                        printf("ENTERING LEVEL 6\n");
+                                        //printf("ENTERING LEVEL 6\n");
                                         lm[0].level_merge[y] = 1;
                                         merge_arrays(array1,array2,y,lm,bloom6,bloom6);
                                         lm[0].level_merge[y] = 0;
@@ -1134,13 +1207,28 @@ int main(int argc, char **argv)
                         break;
                     case 'r': //range function runs here
                         r_start = clock();
-                        //printf("RANGE -> MIN: %d\n",num1);
-                        //printf("RANGE -> MAX: %d\n",num2);
+                        printf("RANGE -> MIN: %d\n",num1);
+                        printf("RANGE -> MAX: %d\n",num2);
 
-                        lsm_range(c0,run,ptr1,ptr2,lm,bloom1,bloom2,bloom3,bloom4,bloom5,bloom6,num1,num2);
+                        //range_store *rstore;
+                        //rstore=malloc(10*array_size*sizeof(range_store));
+
+                        /*int test_me;
+                        for(test_me=num1; test_me<num2; test_me++){
+                            printf("TESTING ME ME ME %d\n",test_me);
+                        }*/
+
+                        //lsm_range(c0,run,ptr1,ptr2,lm,bloom1,bloom2,bloom3,bloom4,bloom5,bloom6,num1,num2);
+
+                        /*int rs;
+                        for(rs=0; rs<lm[0].range_count; rs++){
+                            printf("THE RANGE: %d\n",rstore[rs].the_key);
+                        }*/
 
                         r_end = clock();
                         r_time_used += ((double)(r_end - r_start)) / CLOCKS_PER_SEC;
+
+                        //free(rstore);
                         
                         break;                      
                 }
@@ -1249,6 +1337,7 @@ int main(int argc, char **argv)
         strcat(the_tree,"lsm_tree");
         rmdir(the_tree);        
     }
+
 
 
     printf("\n");

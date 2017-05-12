@@ -19,8 +19,8 @@ typedef int bool;
 
 #define MAXC 256
 
-//#define array_size 100000
-const size_t array_size;
+#define array_size 100000
+//const size_t array_size;
 
 #define threshold 20000
 #define factor 2
@@ -78,6 +78,11 @@ typedef struct {
     int level_merge[7];
     int bloom_hit[6];
     int bloom_miss[6];
+    int fence_min_A[7];
+    int fence_min_B[7];
+    int fence_max_A[7];
+    int fence_max_B[7];
+    int range_count;
 } lsm_meta;
 
 typedef struct  {
@@ -241,7 +246,9 @@ void merge_arrays(lsm *ptr2, lsm *ptr3, int destTree,lsm_meta *lm, bloom_t curre
     //get total size of both files combined
     total_array_size = fsize(dest1_base) + fsize(dest2_base);
 
-     /////////////////////////////////////////////////printf("TOTAL ARRAY SIZE %d\n",total_array_size);
+    /*printf("ARRAY1 SIZE: %d\n",fsize(dest1_base));
+    printf("ARRAY2 SIZE: %d\n",fsize(dest2_base));*/
+    ///////////////////////////////////////////////////////////////////////////printf("TOTAL ARRAY SIZE %d\n",total_array_size);
 
     //since level counts start at zero 2 => level c1, 3 => level c2 etc.
     //checking for next level
@@ -260,7 +267,7 @@ void merge_arrays(lsm *ptr2, lsm *ptr3, int destTree,lsm_meta *lm, bloom_t curre
     }
     level_threshold = x * threshold;
 
-    /////////////////////////////////////////////////printf("LEVEL THRESHOLD: (level)%d (size)%d\n",destTree,level_threshold);
+    ////////////////////////////////////////////////////////////////////printf("LEVEL THRESHOLD: (level)%d (size)%d\n",destTree,level_threshold);
 
     int move_to = 0;
 
@@ -364,6 +371,26 @@ void merge_arrays(lsm *ptr2, lsm *ptr3, int destTree,lsm_meta *lm, bloom_t curre
         //sort new purged array
         qsort(ptr2, final_count, sizeof(*ptr2), cmp);
 
+        int fmin,fmax,fmin_index;
+        fmin_index = final_count - 1;
+        fmin = ptr2[fmin_index].keys;
+        fmax = ptr2[0].keys;
+
+        switch(move_to){
+            case 0:
+                lm[0].fence_min_A[destTree] = fmin;
+                lm[0].fence_max_A[destTree] = fmax;
+            case 1:
+                if(next_level_file_count == 1){
+                    lm[0].fence_min_B[next_level] = fmin;
+                    lm[0].fence_max_B[next_level] = fmax;   
+                } else {
+                    lm[0].fence_min_A[next_level] = fmin;
+                    lm[0].fence_max_A[next_level] = fmax;            
+                }
+
+        }
+
         //Write data to disk
         if (fwrite(ptr2, sizeof(lsm), final_count, lsmTree3) != final_count) //counter is the count of the lsm tree being flushed (run_count)
         {
@@ -432,7 +459,6 @@ void merge_arrays(lsm *ptr2, lsm *ptr3, int destTree,lsm_meta *lm, bloom_t curre
 
 
 }
-
 
 
 void lsm_flush(lsm *ptr, lsm *run, lsm *lsm_purge,lsm_meta *lm, bloom_t bloom1){ //pointer to first bloom filter -> c1 level
@@ -521,6 +547,9 @@ void lsm_flush(lsm *ptr, lsm *run, lsm *lsm_purge,lsm_meta *lm, bloom_t bloom1){
         lm[0].level_merge[0] = 1;
         ///////////////////////////////////////
 
+        
+
+
         //purge deleted elements/////////////////////////
         for(z=0; z<lm[0].count_B[0]; z++) {
 
@@ -534,12 +563,21 @@ void lsm_flush(lsm *ptr, lsm *run, lsm *lsm_purge,lsm_meta *lm, bloom_t bloom1){
             }
 
         }
+
         /////////////////////////////////////////////////
+
+        //sort new purged array
+        qsort(lsm_purge, purge_count, sizeof(*lsm_purge), cmp);
+
 
         if(lm[0].level[1] == 1){
             move_to = 2;
         }
 
+        int fmin,fmax,fmin_index;
+        fmin_index = purge_count - 1;
+        fmin = lsm_purge[fmin_index].keys;
+        fmax = lsm_purge[0].keys;
 
         if (move_to == 1) {
 
@@ -548,16 +586,20 @@ void lsm_flush(lsm *ptr, lsm *run, lsm *lsm_purge,lsm_meta *lm, bloom_t bloom1){
             lm[0].level[1] = lm[0].level[1] + 1;
             lm[0].count_A[1] = purge_count;
 
+            lm[0].fence_min_A[1] = fmin;
+            lm[0].fence_max_A[1] = fmax;           
+
         } else { //array was flushed to level c1 as b.dat
 
             sprintf(tree2,"lsm_tree/%d/b.dat",1);
             lsm_tree = fopen(tree2, "wb");
             lm[0].level[1] = lm[0].level[1] + 1;
             lm[0].count_B[1] = purge_count;
+
+            lm[0].fence_min_A[1] = fmin;
+            lm[0].fence_max_A[1] = fmax;              
         }        
 
-        //sort new purged array
-        qsort(lsm_purge, purge_count, sizeof(*lsm_purge), cmp);
 
         if (fwrite(lsm_purge, sizeof(lsm), purge_count, lsm_tree) != purge_count) //counter is the count of the lsm tree being flushed (run_count, which equals to c0_count at the point of flushing)
         {
@@ -586,39 +628,22 @@ void lsm_flush(lsm *ptr, lsm *run, lsm *lsm_purge,lsm_meta *lm, bloom_t bloom1){
 
 
 
-//NEED to rebuild fence pointer to handle possibility of two files a. get num of files in level b. get the count for each - return a number to reflect the correct file -> 1 = a.dat and 2 = b.dat
 int fence_pointer(lsm *ptr,lsm_meta *lm, int key, int level,int t_array){
-    //int results = 0;
-    int the_count;
-    int min,max,max_index;
+
+    int min,max;
     int results = 0;
-
-
-    //get 1st key of array
-    min = ptr[0].keys;
 
     if(t_array == 1) {
 
-        the_count = lm[0].count_A[level];
+        max = lm[0].fence_max_A[level];
+        min = lm[0].fence_min_A[level];
 
     } else { //must be 2
 
-        the_count = lm[0].count_B[level];
+        max = lm[0].fence_max_B[level];
+        min = lm[0].fence_min_B[level];
 
     }
-
-
-
-    //sort -> should maybe move outside
-    qsort(ptr,the_count,sizeof(*ptr),cmp);
-
-    /*int xy;
-    for(xy=0; xy<the_count; xy++){
-        printf("THE DAMM KEY: %d\n",ptr[xy].keys);
-    }*/
-
-    max_index = the_count - 1;
-    max = ptr[max_index].keys;
 
     int is_there = 0;
 
@@ -630,7 +655,6 @@ int fence_pointer(lsm *ptr,lsm_meta *lm, int key, int level,int t_array){
         is_there = is_there + 1;
         //printf("[2]xxxxxxxxxxx IS_THERE IS: %d\n",is_there);
     }
-
 
     if(is_there == 2){
         results = 1;
@@ -1052,13 +1076,13 @@ int main(int argc, char **argv)
     double r_time_used;
     double d_time_used;
 
-    array_size = factor * sysconf(_SC_PAGESIZE);
+    //array_size = factor * sysconf(_SC_PAGESIZE);
 
     lsm *c0;
     c0=malloc(array_size*sizeof(lsm));
 
     lsm_meta *lm;
-    lm=malloc(10*sizeof(lsm_meta));
+    lm=malloc(15*sizeof(lsm_meta));
 
     lsm *run; //passed to function for saving flushed data from level0 to level 1
     run=malloc(array_size*sizeof(lsm));
